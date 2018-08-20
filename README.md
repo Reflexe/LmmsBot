@@ -4,11 +4,12 @@ A simple webhook bot that grabs binaries from Travis logs and post them as a com
 # Setting up 
 - Make sure you build with Travis, and upload your artifacts to transfer.sh.
 - Install pygithub and travispy. 
-- Create a new file `settings.py` with this content:
+- Create a new repository that would be used for re-uploading the atrifacts.
+- Create a new file `settings.py` with this content (fill the requested fields):
 ```python
 GITHUB_USER = '<your username>'
 GITHUB_TOKEN = '<your token>'
-GITHUB_OBJECTS_REPO = '<your repo>'
+GITHUB_OBJECTS_REPO = '<the repo you've created>'
 GITHUB_OBJECTS_REPO_BRANCH = 'master'
 
 BOT_COMMENT_BODY_TEMPLATE = '''## Downloads for this pull requests\n\n'''
