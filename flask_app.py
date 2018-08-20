@@ -1,9 +1,10 @@
+
+# A very simple Flask Hello World app for you to get started with...
+
 from flask import Flask
 
 from flask import request
-import json, re, os, shutil
-
-from urllib.request import urlretrieve
+import json, re, os, shutil, urllib
 
 from github import Github
 from travispy import TravisPy
@@ -18,8 +19,6 @@ github = Github(GITHUB_USER, GITHUB_TOKEN)
 travis = TravisPy.github_auth(GITHUB_TOKEN)
 
 app = Flask(__name__)
-
-from git import Repo
 
 _link_extension_to_platform_title = {
     'dmg': "Mac",
@@ -67,26 +66,24 @@ def update_comment(github_pr, artifacts_name_and_links):
 
     bot_comment.edit(new_body)
 
-def upload_artifacts_to_github_repo(artifact_paths):
-    repo = Repo('.')
-    commit_message = '?'
-    repo.index.add(artifact_paths)
-    repo.index.commit(commit_message)
-    origin = repo.remote('origin')
-    origin.push()
+def upload_artifacts_to_github_repo(repo, git_dir, atrifacts_content_and_path):
+    for path, content in atrifacts_content_and_path:
+    
+        path = str("/" + git_dir + "/" + path)
+    
+        warnings.warn(path)
+        repo.create_file(
+            path, # path
+            "Automaticlly upload a new file", # commit message
+            content, # content
+            GITHUB_OBJECTS_REPO_BRANCH # Branch 
+        )
 
-    links = []
-
-    for path in artifact_paths:
-        links.append (
-            RAW_GITHUB_LINK_TEMPLATE.format(
+        yield RAW_GITHUB_LINK_TEMPLATE.format(
                 user=GITHUB_USER,
                 repo_name=GITHUB_OBJECTS_REPO,
                 branch=GITHUB_OBJECTS_REPO_BRANCH,
                 path=path)
-        )
-
-    return links
 
 
 def get_artifact_link_from_job(job):
@@ -119,59 +116,50 @@ def get_pull_request_from_build(repo, travis_build):
     pull = repo.get_pull(travis_build.pull_request_number)
 
     return pull
+    
+def download_link(link):
+    response = urllib.request.urlopen(link)
+    return response.read()
 
-
-def download_link_to(link, path):
-    '''Download @link to @path
-
-    return downloaded path
-    '''
-
-    path = path + '/' + link.split('/')[-1]
-
-    warnings.warn('Trying to download {} to {}'.format(link, path))
-    urlretrieve(link, path)
-    #os.system('echo 1 > MARKER; curl -o "{path}" "{link}"'.format(path=path, link=link))
-
-    return path
+def get_links_contents_and_paths(links):
+    for link in links:
+        # That way we only have one binary on ram each time. 
+        # (as long as we never store the result in a list)
+        yield (link.split('/')[-1], download_link(link))
 
 @app.route('/', methods=['POST'])
 def main():
     json_data = json.loads(request.data.decode('utf-8'))
 
+    # Make sure we have the artifacts.
     if json_data.get('state', '') == 'success':
-        os.makedirs(TEMP_DIR_PATH, exist_ok=True)
-        os.chdir(TEMP_DIR_PATH)
-
-        download_temp_dirname = json_data['sha']
-        os.makedirs(download_temp_dirname, exist_ok=True)
 
         travis_url = json_data['target_url']
         build = travis_url_to_build(travis_url)
         repo = github.get_repo(json_data['repository']['full_name'])
-
+       
         if build.pull_request == False:
             return "Not a PR"
 
-
+        # Retrive the download links
         links = get_artifact_links_from_build(build)
+        
+        # Retrive pull request
         pull_request = get_pull_request_from_build(repo, build)
 
-        downloaded_files = []
-        for link in links:
-            downloaded_file = download_link_to (link, download_temp_dirname)
-            downloaded_files.append (downloaded_file)
+        # Download the download links to a variable 
+        links_content_and_paths = get_links_contents_and_paths(links)
+        
+        # Upload them to our repo.
+        upload_repo = github.get_repo(github.get_user().login + "/" + GITHUB_OBJECTS_REPO)
+        github_download_links = upload_artifacts_to_github_repo (upload_repo, json_data['sha'], links_content_and_paths)
 
-        github_download_links = upload_artifacts_to_github_repo (downloaded_files)
-
+        # Resolve platform name for each link. 
         links_platforms = (platform_from_link(link) for link in github_download_links)
 
+        # Update our comment, or create a new one.
         update_comment(pull_request, zip(links_platforms, github_download_links))
-
-        shutil.rmtree(download_temp_dirname)
         return "Done;"
     else:
         return "state != success"
-
-    return "Hi!"
 
