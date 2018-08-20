@@ -143,6 +143,8 @@ def main():
 
         # Retrive the download links
         links = get_artifact_links_from_build(build)
+        if not links:
+            return "No links found"
         
         # Retrive pull request
         pull_request = get_pull_request_from_build(repo, build)
