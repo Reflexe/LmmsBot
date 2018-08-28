@@ -5,7 +5,7 @@ import json, re, os, shutil
 
 from urllib.request import urlretrieve
 
-from github import Github, enable_console_debug_logging
+from github import Github
 from travispy import TravisPy
 
 from settings import *
@@ -104,6 +104,7 @@ def get_pull_request_from_build(repo, travis_build):
 
     return pull
 
+
 def download_link_to(link, path):
     '''Download @link to @path
 
@@ -127,7 +128,6 @@ def main():
         download_temp_dirname = json_data['sha']
         os.makedirs(download_temp_dirname, exist_ok=True)
 
-        # Make sure we're working on Travis and not other kind of CI.
         if not is_travis_url(json_data['target_url']):
             return "Not Travis"
 
@@ -153,7 +153,9 @@ def main():
         links_platforms = [platform_from_link(link) for link in downloaded_files]
 
         artifacts_repo = github.get_repo(GITHUB_USER + "/" + GITHUB_OBJECTS_REPO)
-        release_tag = json_data['sha']
+
+        # Remove one digit because github does not like 40 hex digits.
+        release_tag = json_data['sha'][:-1]
 
         github_download_links = upload_artifacts_to_github_repo (release_tag, artifacts_repo, downloaded_files)
         github_download_links = list(github_download_links)
