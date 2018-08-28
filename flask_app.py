@@ -8,13 +8,7 @@ from urllib.request import urlretrieve
 from github import Github, enable_console_debug_logging
 from travispy import TravisPy
 
-import warnings
-
 from settings import *
-
-RAW_GITHUB_LINK_TEMPLATE = 'https://raw.githubusercontent.com/{user}/{repo_name}/{branch}/{path}'
-
-enable_console_debug_logging()
 
 github = Github(GITHUB_USER, GITHUB_TOKEN)
 travis = TravisPy.github_auth(GITHUB_TOKEN)
@@ -40,6 +34,9 @@ def platform_from_link(link):
 def build_id_from_travis_url(url):
     return re.findall('http[s]?://travis-ci\.(?:org|com)/(?:\w+)/(?:\w+)/builds/([0-9]+)(?:.*)', url)[0]
 
+def is_travis_url(url):
+    return "travis-ci" in url
+
 def create_reseved_comment_for_pr(github_pr):
     return github_pr.create_issue_comment('Reserved for artifacts. Sorry :P')
 
@@ -58,7 +55,6 @@ def generate_comment_from_platforms_and_links(platforms_and_links):
 
     comment = BOT_COMMENT_BODY_TEMPLATE
 
-    warnings.warn ("Got {} platforms and links".format(platforms_and_links))
     for platform, link in platforms_and_links:
         comment += BOT_COMMENT_DOWNLOAD_LINE_TEMPLATE.format(platform=platform, link=link)
 
@@ -77,10 +73,8 @@ def upload_artifacts_to_github_repo(tag, artifacts_repo, artifact_paths):
 
     for path in artifact_paths:
        asset = release.upload_asset(path)
-    
+
        yield asset.browser_download_url
-
-
 
 def get_artifact_link_from_job(job):
     raw_log = job.log.body
@@ -105,12 +99,10 @@ def get_artifact_links_from_build(travis_build):
         if maybe_link:
             yield maybe_link
 
-
 def get_pull_request_from_build(repo, travis_build):
     pull = repo.get_pull(travis_build.pull_request_number)
 
     return pull
-
 
 def download_link_to(link, path):
     '''Download @link to @path
@@ -120,9 +112,7 @@ def download_link_to(link, path):
 
     path = path + '/' + link.split('/')[-1]
 
-    warnings.warn('Trying to download {} to {}'.format(link, path))
     urlretrieve(link, path)
-    #os.system('echo 1 > MARKER; curl -o "{path}" "{link}"'.format(path=path, link=link))
 
     return path
 
@@ -136,6 +126,10 @@ def main():
 
         download_temp_dirname = json_data['sha']
         os.makedirs(download_temp_dirname, exist_ok=True)
+
+        # Make sure we're working on Travis and not other kind of CI.
+        if not is_travis_url(json_data['target_url']):
+            return "Not Travis"
 
         travis_url = json_data['target_url']
         build = travis_url_to_build(travis_url)
@@ -159,14 +153,10 @@ def main():
         links_platforms = [platform_from_link(link) for link in downloaded_files]
 
         artifacts_repo = github.get_repo(GITHUB_USER + "/" + GITHUB_OBJECTS_REPO)
-        release_tag = "PR" + str(build.pull_request_number) + "." + build_id
-        
+        release_tag = json_data['sha']
+
         github_download_links = upload_artifacts_to_github_repo (release_tag, artifacts_repo, downloaded_files)
         github_download_links = list(github_download_links)
-        
-        warnings.warn(str(list(github_download_links)))
-        warnings.warn(str(list(downloaded_files)))
-        warnings.warn(str(links_platforms))
 
         update_comment(pull_request, zip(links_platforms, github_download_links))
 
