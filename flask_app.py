@@ -37,18 +37,26 @@ def build_id_from_travis_url(url):
 def is_travis_url(url):
     return "travis-ci" in url
 
-def create_reseved_comment_for_pr(github_pr):
-    return github_pr.create_issue_comment('Reserved for artifacts. Sorry :P')
+def create_reseved_comment_for_pr(github_pr, initial_content):
+    return github_pr.create_issue_comment(initial_content)
 
-def find_or_create_bot_pr_comment(github_pr):
+def find_or_create_bot_pr_comment(github_pr, initial_content):
+    '''
+        Find our comment or create it if it does not exist.
+
+        Returns a pair:
+            first:  <boolean>   Have we created a new comment?
+            second: <comment>   The comment object.
+    '''
+
     comments = list(github_pr.get_issue_comments())
 
     for comment in comments:
         if comment.user.login == GITHUB_USER:
-            return comment
+            return (False, comment)
 
     # No comment, create one
-    return create_reseved_comment_for_pr(github_pr)
+    return (True, create_comment_for_pr(github_pr, initial_content))
 
 def generate_comment_from_platforms_and_links(platforms_and_links):
     platforms_and_links = list(platforms_and_links)
@@ -63,18 +71,29 @@ def generate_comment_from_platforms_and_links(platforms_and_links):
     return comment
 
 def update_comment(github_pr, artifacts_name_and_links):
-    bot_comment = find_or_create_bot_pr_comment(github_pr)
     new_body = generate_comment_from_platforms_and_links(artifacts_name_and_links)
+    should_not_edit, bot_comment = find_or_create_bot_pr_comment(github_pr, new_body)
 
-    bot_comment.edit(new_body)
+    if not should_not_edit:
+        bot_comment.edit(new_body)
 
 def upload_artifacts_to_github_repo(tag, artifacts_repo, artifact_paths):
+    release = artifacts_repo.get_release(tag)
+
+    # We already have this release tag, just remove it. 
+    if release is not None:
+        release.delete_release()
+    
+    
     release = artifacts_repo.create_git_release(tag, "Name", "Message")
+
 
     for path in artifact_paths:
        asset = release.upload_asset(path)
 
        yield asset.browser_download_url
+    
+
 
 def get_artifact_link_from_job(job):
     raw_log = job.log.body
