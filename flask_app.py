@@ -10,6 +10,8 @@ from travispy import TravisPy
 
 from settings import *
 
+import logging
+
 github = Github(GITHUB_USER, GITHUB_TOKEN)
 travis = TravisPy.github_auth(GITHUB_TOKEN)
 
@@ -80,11 +82,11 @@ def update_comment(github_pr, artifacts_name_and_links):
 def upload_artifacts_to_github_repo(tag, artifacts_repo, artifact_paths):
     release = artifacts_repo.get_release(tag)
 
-    # We already have this release tag, just remove it. 
+    # We already have this release tag, just remove it.
     if release is not None:
         release.delete_release()
-    
-    
+
+
     release = artifacts_repo.create_git_release(tag, "Name", "Message")
 
 
@@ -92,16 +94,19 @@ def upload_artifacts_to_github_repo(tag, artifacts_repo, artifact_paths):
        asset = release.upload_asset(path)
 
        yield asset.browser_download_url
-    
+
 
 
 def get_artifact_link_from_job(job):
     raw_log = job.log.body
-    result = re.findall('(https://transfer\.sh/\S+)', raw_log)
+    result = re.findall('(https://transfer\.sh/\S+)travis_time', raw_log)
     if not result:
         return ''
 
     link = result[0]
+
+    # Filter strage string after the link
+
 
     return link
 
@@ -181,7 +186,7 @@ def main():
 
         update_comment(pull_request, zip(links_platforms, github_download_links))
 
-        shutil.rmtree(download_temp_dirname)
+        shutil.rmtree(TEMP_DIR_PATH + '/' + download_temp_dirname)
         return "Done;"
     else:
         return "state != success"
